@@ -6,6 +6,40 @@
 import connect
 import logging
 
+def MakeBooleanStructure(patient, case, examination, **kwargs):
+
+    StructureName = kwargs.get("StructureName")
+    ExcludeFromExport  = kwargs.get("ExcludeFromExport")
+    VisualizeStructure = kwargs.get("VisualizeStructure")
+    StructColor = kwargs.get("StructColor")
+    SourcesA = kwargs.get("SourcesA")
+    MarginTypeA = kwargs.get("MarginTypeA")
+    ExpA = kwargs.get("ExpA")
+    OperationA = kwargs.get("OperationA")
+    SourcesB = kwargs.get("SourcesB")
+    MarginTypeB = kwargs.get("MarginTypeB")
+    ExpB = kwargs.get("ExpB")
+    OperationB = kwargs.get("OperationB")
+    MarginTypeR = kwargs.get("MarginTypeR")
+    ExpR = kwargs.get("ExpR")
+    OperationResult = kwargs.get("OperationResult")
+    StructType = kwargs.get("StructType")
+    try:
+        case.PatientModel.RegionsOfInterest[StructureName]
+        logging.warning("Structure "+StructureName+" exists.  This will be overwritten in this examination")
+    except:
+        case.PatientModel.CreateRoi(Name=StructureName, Color=StructColor, Type=StructType, TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
+  
+    case.PatientModel.RegionsOfInterest[StructureName].SetAlgebraExpression(
+        ExpressionA={ 'Operation': OperationA, 'SourceRoiNames': SourcesA,
+               'MarginSettings': { 'Type': MarginTypeA, 'Superior': ExpA[0], 'Inferior': ExpA[1], 'Anterior': ExpA[2], 'Posterior': ExpA[3], 'Right': ExpA[4], 'Left': ExpA[5] } },
+        ExpressionB={ 'Operation': OperationB, 'SourceRoiNames': SourcesB,
+               'MarginSettings': { 'Type': MarginTypeB, 'Superior': ExpB[0], 'Inferior': ExpB[0], 'Anterior': ExpB[2], 'Posterior': ExpB[3], 'Right': ExpB[4], 'Left': ExpB[5] } },
+        ResultOperation=OperationResult,
+            ResultMarginSettings={ 'Type': MarginTypeR, 'Superior': ExpR[0], 'Inferior': ExpR[1], 'Anterior': ExpR[2], 'Posterior': ExpR[3], 'Right': ExpR[4], 'Left': ExpR[5] })
+    case.PatientModel.RegionsOfInterest[StructureName].ExcludeFromExport = ExcludeFromExport
+    case.PatientModel.RegionsOfInterest[StructureName].UpdateDerivedGeometry(Examination=examination, Algorithm="Auto") 
+
 def main():
 
     try:
@@ -19,6 +53,8 @@ def main():
     # List of PTVs to be used
     GeneratePTVs = True
     GeneratePTVEvals = True
+    GenerateSkin = True
+    GenerateInnerAir = True
     GenerateUnderDose = True
     GenerateUniformDose = True
     GenerateRingHD = True
@@ -149,161 +185,142 @@ def main():
 
         
 
-    try:
-        retval_Skin = case.PatientModel.RegionsOfInterest["Skin"]
-    except: 
-        retval_Skin = case.PatientModel.CreateRoi(Name="Skin", Color="Blue", Type="Undefined", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
+    if GenerateSkin:
+        Skin_defs = {
+        "StructureName" : "Skin",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " Blue",
+        "OperationA" : "Union",
+        "SourcesA" : ["ExternalClean"],
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationB" : "Union",
+        "SourcesB" : ["ExternalClean"],
+        "MarginTypeB" : "Contract",
+        "ExpB" : [ SkinContraction, SkinContraction, SkinContraction, SkinContraction, SkinContraction, SkinContraction],
+        "OperationResult" : "Subtraction",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "StructType" : "Undefined"}
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **Skin_defs)
 
-    with connect.CompositeAction('ROI Algebra (Skin)'):
-    
-      retval_Skin.SetAlgebraExpression(
-         ExpressionA={ 'Operation': "Union", 'SourceRoiNames': ["ExternalClean"], 'MarginSettings': {
-             'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } }, 
-         ExpressionB={'Operation': "Union", 'SourceRoiNames': ["ExternalClean"], 'MarginSettings': {
-            'Type': "Contract", 'Superior': SkinContraction, 'Inferior': SkinContraction, 'Anterior': SkinContraction, 'Posterior': SkinContraction, 'Right': SkinContraction, 'Left': SkinContraction } },
-         ResultOperation="Subtraction", ResultMarginSettings={ 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 })
-      retval_Skin.UpdateDerivedGeometry(Examination=examination, Algorithm="Auto")
-      retval_Skin.ExcludeFromExport = True
+    if GenerateInnerAir:
+        # Automated build of the Air contour
+        try:
+            retval_AIR = case.PatientModel.RegionsOfInterest["Air"]
+        except:
+            retval_AIR = case.PatientModel.CreateRoi(Name="Air", Color="Green", Type="Control", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
+        retval_AIR.GrayLevelThreshold(Examination=examination, LowThreshold=-1024, HighThreshold=InnerAirHU, PetUnit="", CbctUnit=None, BoundingBox=None)
 
-      # CompositeAction ends 
-
-    # Automated build of the Air contour
-    try:
-        retval_AIR = case.PatientModel.RegionsOfInterest["Air"]
-    except:
-        retval_AIR = case.PatientModel.CreateRoi(Name="Air", Color="Green", Type="Control", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
-
-    retval_AIR.GrayLevelThreshold(Examination=examination, LowThreshold=-1024, HighThreshold=InnerAirHU, PetUnit="", CbctUnit=None, BoundingBox=None)
-
-
-    # Use the previous Air contour to build the InnerAir volume excluding voxels outside the External 
-    try:
-        retval_InnerAir = case.PatientModel.RegionsOfInterest["InnerAir"]
-    except:
-        retval_InnerAir = case.PatientModel.CreateRoi(Name="InnerAir", Color="SaddleBrown", Type="Control", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
-    with connect.CompositeAction('ROI Algebra (InnerAir)'):
-      retval_InnerAir.SetAlgebraExpression(
-          ExpressionA={ 'Operation': "Intersection", 'SourceRoiNames': ["ExternalClean", "Air"], 
-              'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } },
-          ExpressionB={ 'Operation': "Union", 'SourceRoiNames': PTVList,
-              'MarginSettings': { 'Type': "Expand", 'Superior': 1, 'Inferior': 1, 'Anterior': 1, 'Posterior': 1, 'Right': 1, 'Left': 1 } }, 
-          ResultOperation="Intersection", 
-              ResultMarginSettings={ 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 })
-
-
-      retval_InnerAir.UpdateDerivedGeometry(Examination=examination, Algorithm="Auto")
-      InAir=case.PatientModel.RegionsOfInterest['InnerAir']
-      retval_InnerAir.VolumeThreshold(InputRoi=InAir, Examination=examination,MinVolume = 0.1,MaxVolume = 500)
-      retval_InnerAir.ExcludeFromExport = True
+        InnerAir_defs = {
+        "StructureName" : "InnerAir",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " SaddleBrown",
+        "OperationA" : "Intersection",
+        "SourcesA" : ["ExternalClean", "Air"], 
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationB" : "Union",
+        "SourcesB" : PTVList,
+        "MarginTypeB" : "Expand",
+        "ExpB" : [ 1, 1, 1, 1, 1, 1],
+        "OperationResult" : "Intersection",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "StructType" : "Undefined"}
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **InnerAir_defs)
+        InAir=case.PatientModel.RegionsOfInterest['InnerAir']
+        InAir.VolumeThreshold(InputRoi=InAir, Examination=examination,MinVolume = 0.1,MaxVolume = 500)
 
 # Set the Sources Structure for Evals
-    EvalSources = ["ExternalClean"]
     EvalSubtract = ["Skin", "InnerAir"]
     if GeneratePTVEvals:
         for index, Target in enumerate(SourceList):
+            EvalSources = ["ExternalClean"]
             EvalName = PTVEvalList[index]
-            EvalSources.append(Target)  
-            try: 
-                retval_Evals = case.PatientModel.RegionsOfInterest[EvalName]
-            except:
-                retval_Evals = case.PatientModel.CreateRoi(Name=EvalName, Color=TargetColors[index], Type="Ptv", TissueName=None, RbeCellTypeName=None, RoiMaterial=None) 
-
-            with connect.CompositeAction('Eval Creation'):
-                retval_Evals.SetAlgebraExpression(
-                    ExpressionA={ 'Operation': "Intersection", 'SourceRoiNames': EvalSources,
-                        'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } }, 
-                    ExpressionB={ 'Operation': "Union", 'SourceRoiNames': EvalSubtract,
-                        'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } }, 
-                    ResultOperation="Subtraction", 
-                        ResultMarginSettings={ 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 })
-                retval_Evals.UpdateDerivedGeometry(Examination=examination, Algorithm="Auto")
-            # Add this target to the delete list
-            retval_Evals.ExcludeFromExport = True
+            EvalSources.append(Target)
+            PTVEval_defs = {
+            "StructureName" : EvalName,
+            "ExcludeFromExport" : True,
+            "VisualizeStructure" : False,
+            "StructColor" : TargetColors[index],
+            "OperationA" : "Intersection",
+            "SourcesA" : EvalSources,
+            "MarginTypeA" : "Expand",
+            "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+            "OperationB" : "Union",
+            "SourcesB" : EvalSubtract,
+            "MarginTypeB" : "Expand",
+            "ExpB" : [ 0, 0, 0, 0, 0, 0],
+            "OperationResult" : "Subtraction",
+            "MarginTypeR" : "Expand",
+            "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+            "StructType" : "Ptv"}
+            MakeBooleanStructure(patient = patient, case = case, examination = examination, **PTVEval_defs)
             EvalSubtract.append(Target)
 # Exclusion Zone
     if GenerateUnderDose:
-        try:
-            StructureName = "PTV_EZ"
-            retval_PTVEZ = case.PatientModel.RegionsOfInterest[StructureName]
-            logging.warning("Structure "+StructureName+" exists.  This will be overwritten in this examination")
-        except:
-            retval_PTVEZ = case.PatientModel.CreateRoi(Name="PTV_EZ", Color="255, 0, 255", Type="Ptv", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
-
-        with connect.CompositeAction('PTVEZ Creation'):
-            retval_PTVEZ.SetAlgebraExpression(
-                ExpressionA={ 'Operation': "Union", 'SourceRoiNames': UnderStruct,
-                    'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } },
-                ExpressionB={ 'Operation': "Union", 'SourceRoiNames': PTVList,
-                    'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } },
-                ResultOperation="Intersection",
-                    ResultMarginSettings={ 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 })
-            retval_PTVEZ.UpdateDerivedGeometry(Examination=examination, Algorithm="Auto") 
-            retval_PTVEZ.ExcludeFromExport = True
+        PTVEZ_defs = {
+        "StructureName" : "PTV_EZ",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " 255, 0, 255",
+        "OperationA" : "Union",
+        "SourcesA" : UnderStruct,
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationB" : "Union",
+        "SourcesB" : PTVList,
+        "MarginTypeB" : "Expand",
+        "ExpB" : [ 0, 0, 0, 0, 0, 0],
+        "OperationResult" : "Intersection",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "StructType" : "Undefined"}
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **PTVEZ_defs)
 
     # RingHD
     if GenerateRingHD:
         # First make an ExternalClean-limited expansion volume
-        StructureName = "z_derived_maxhd"
-        ExcludeFromExport = True
-        VisualizeStructure = False
-        StructColor = " 255, 0, 255"
-        SourcesA = PTVList
-        MarginTypeA = "Expand"
-        ExpA = [ ThickHDRing, ThickHDRing, ThickHDRing, ThickHDRing, ThickHDRing, ThickHDRing ]
-        OperationA = "Union"
-        SourcesB = ["ExternalClean"]
-        MarginTypeB = "Expand"
-        ExpB = [ 0, 0, 0, 0, 0, 0 ]
-        OperationB = "Union"
-        MarginTypeR = "Expand"
-        ExpR = [ 0, 0, 0, 0, 0, 0 ]
-        OperationResult = "Intersection"
-        try:
-            case.PatientModel.RegionsOfInterest[StructureName]
-            logging.warning("Structure "+StructureName+" exists.  This will be overwritten in this examination")
-        except:
-            case.PatientModel.CreateRoi(Name=StructureName, Color=StructColor, Type="Undefined", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
-      
-        case.PatientModel.RegionsOfInterest[StructureName].SetAlgebraExpression(
-            ExpressionA={ 'Operation': OperationA, 'SourceRoiNames': SourcesA,
-                   'MarginSettings': { 'Type': MarginTypeA, 'Superior': ExpA[0], 'Inferior': ExpA[1], 'Anterior': ExpA[2], 'Posterior': ExpA[3], 'Right': ExpA[4], 'Left': ExpA[5] } },
-            ExpressionB={ 'Operation': OperationB, 'SourceRoiNames': SourcesB,
-                   'MarginSettings': { 'Type': MarginTypeB, 'Superior': ExpB[0], 'Inferior': ExpB[0], 'Anterior': ExpB[2], 'Posterior': ExpB[3], 'Right': ExpB[4], 'Left': ExpB[5] } },
-            ResultOperation=OperationResult,
-                ResultMarginSettings={ 'Type': MarginTypeR, 'Superior': ExpR[0], 'Inferior': ExpR[1], 'Anterior': ExpR[2], 'Posterior': ExpR[3], 'Right': ExpR[4], 'Left': ExpR[5] })
-        case.PatientModel.RegionsOfInterest[StructureName].ExcludeFromExport = ExcludeFromExport
-        case.PatientModel.RegionsOfInterest[StructureName].UpdateDerivedGeometry(Examination=examination, Algorithm="Auto") 
+        z_derived_maxhd_defs = { 
+        "StructureName" : "z_derived_maxhd",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " 255, 0, 255",
+        "SourcesA" : PTVList,
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ ThickHDRing, ThickHDRing, ThickHDRing, ThickHDRing, ThickHDRing, ThickHDRing ],
+        "OperationA" : "Union",
+        "SourcesB" : ["ExternalClean"],
+        "MarginTypeB" : "Expand",
+        "ExpB" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationB" : "Union",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationResult" : "Intersection",
+        "StructType" : "Undefined" }
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **z_derived_maxhd_defs)
 
-        StructureName = "Ring_HD"
-        ExcludeFromExport = True
-        VisualizeStructure = False
-        StructColor = " 255, 0, 255"
-        SourcesA = ["z_derived_maxhd"]
-        MarginTypeA = "Expand"
-        ExpA = [ 0, 0, 0, 0, 0, 0 ]
-        OperationA = "Union"
-        SourcesB = PTVList
-        MarginTypeB = "Expand"
-        ExpB = [ RingStandoff, RingStandoff, RingStandoff, RingStandoff, RingStandoff, RingStandoff]
-        OperationB = "Union"
-        MarginTypeR = "Expand"
-        ExpR = [ 0, 0, 0, 0, 0, 0 ]
-        OperationResult = "Subtraction"
-        try:
-            case.PatientModel.RegionsOfInterest[StructureName]
-            logging.warning("Structure "+StructureName+" exists.  This will be overwritten in this examination")
-        except:
-            case.PatientModel.CreateRoi(Name=StructureName, Color=StructColor, Type="Undefined", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
-      
-        case.PatientModel.RegionsOfInterest[StructureName].SetAlgebraExpression(
-            ExpressionA={ 'Operation': OperationA, 'SourceRoiNames': SourcesA,
-                   'MarginSettings': { 'Type': MarginTypeA, 'Superior': ExpA[0], 'Inferior': ExpA[1], 'Anterior': ExpA[2], 'Posterior': ExpA[3], 'Right': ExpA[4], 'Left': ExpA[5] } },
-            ExpressionB={ 'Operation': OperationB, 'SourceRoiNames': SourcesB,
-                   'MarginSettings': { 'Type': MarginTypeB, 'Superior': ExpB[0], 'Inferior': ExpB[0], 'Anterior': ExpB[2], 'Posterior': ExpB[3], 'Right': ExpB[4], 'Left': ExpB[5] } },
-            ResultOperation=OperationResult,
-                ResultMarginSettings={ 'Type': MarginTypeR, 'Superior': ExpR[0], 'Inferior': ExpR[1], 'Anterior': ExpR[2], 'Posterior': ExpR[3], 'Right': ExpR[4], 'Left': ExpR[5] })
-        case.PatientModel.RegionsOfInterest[StructureName].ExcludeFromExport = ExcludeFromExport
-        case.PatientModel.RegionsOfInterest[StructureName].UpdateDerivedGeometry(Examination=examination, Algorithm="Auto") 
+        RingHD_defs = {
+        "StructureName" : "Ring_HD",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " 255, 0, 255",
+        "SourcesA" : ["z_derived_maxhd"],
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationA" : "Union",
+        "SourcesB" : PTVList,
+        "MarginTypeB" : "Expand",
+        "ExpB" : [ RingStandoff, RingStandoff, RingStandoff, RingStandoff, RingStandoff, RingStandoff],
+        "OperationB" : "Union",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationResult" : "Subtraction",
+        "StructType" : "Undefined"}
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **RingHD_defs)
 
 if __name__ == '__main__':
     main()
