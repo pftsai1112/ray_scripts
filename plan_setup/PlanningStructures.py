@@ -53,17 +53,20 @@ def main():
     # List of PTVs to be used
     GeneratePTVs = True
     GeneratePTVEvals = True
+    GenerateOTVs = True
     GenerateSkin = True
     GenerateInnerAir = True
     GenerateUnderDose = True
     GenerateUniformDose = True
     GenerateRingHD = True
     GenerateRingLD = True
+    GenerateNormal_2cm = True
     GenerateTargetRings = True
     GenerateTargetSkin = True
 
     PTVPrefix = "PTV_"
     PTVEvalPrefix = "PTV_Eval_"
+    OTVPrefix = "OTV_"
     for index, Target in enumerate(SourceList):
         NumMids = len(SourceList)-2
         if index == 0:
@@ -71,24 +74,30 @@ def main():
             PTVList = [PTVName]
             PTVEvalName = PTVEvalPrefix+"High"
             PTVEvalList = [PTVEvalName]
+            OTVName = OTVPrefix+"High"
+            OTVList = [OTVName]
         elif index == len(SourceList)-1:
             PTVName = PTVPrefix+"Low"
             PTVList.append(PTVName)
             PTVEvalName = PTVEvalPrefix+"Low"
             PTVEvalList.append(PTVEvalName)
+            OTVName = OTVPrefix+"Low"
+            OTVList.append(OTVName)
         else:
             MidTargetNumber = index - 1
             PTVName = PTVPrefix+"Mid"+str(MidTargetNumber)
             PTVList.append(PTVName)
             PTVEvalName = PTVEvalPrefix+"Mid"+str(MidTargetNumber)
             PTVEvalList.append(PTVEvalName)
+            OTVName = OTVPrefix+"Mid"+str(MidTargetNumber)
+            OTVList.append(OTVName)
     TargetColors = ["Red", "Green", "Blue", "Yellow", "Orange", "Purple"]
     # Contraction in cm to be used in the definition of the skin contour
     SkinContraction = 0.5
     ##
     # Stand off inputs
     # cm gap between higher dose targets (used for OTV volumes)
-    OtvStandoff = 0.3
+    OTVStandoff = 0.3
     # cm Expansion between targets and rings
     RingStandoff = 0.2
     ThickHDRing = 1.5
@@ -101,74 +110,56 @@ def main():
     InnerAirHU = -900
 
     # Underdosed Strucutures
+    # Replace with a user prompt that suggests
     UnderStruct = ["Esophagus", "OpticNerve_L", "OpticNerve_R", "SpinalCord", "BrainStem"]
     # Uniform dose Structures
+    # Replace with a user prompt that suggest
     UniformStruct = ["Mandible","Lips","ConstrMuscle", "Larynx"]
 
     if GeneratePTVs:
         for index, Target in enumerate(SourceList):
-            try:
-                StructureName = PTVList[index]
-                retval_PTVs = case.PatientModel.RegionsOfInterest[StructureName]
-                logging.warning("Structure "+StructureName+" exists.  Its geometry will be overwritten")
-            except:
-                retval_PTVs = case.PatientModel.CreateRoi(Name=PTVList[index], Color=TargetColors[index], Type="Ptv", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
+            StructureName = PTVList[index]
+            PTV_defs = {
+            "StructureName" : PTVList[index],
+            "ExcludeFromExport" : True,
+            "VisualizeStructure" : False,
+            "StructColor" : TargetColors[index],
+            "OperationA" : "Union",
+            "SourcesA" : [Target],
+            "MarginTypeA" : "Expand",
+            "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+            "OperationB" : "Union",
+            "SourcesB" : [],
+            "MarginTypeB" : "Expand",
+            "ExpB" : [ 0, 0, 0, 0, 0, 0],
+            "OperationResult" : "None",
+            "MarginTypeR" : "Expand",
+            "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+            "StructType" : "Ptv"}
+            MakeBooleanStructure(patient = patient, case = case, examination = examination, **PTV_defs)
 
-            with connect.CompositeAction('ROI Algebra for (PTVs)'):
-                retval_PTVs.SetAlgebraExpression(
-                    ExpressionA={ 'Operation': "Union", 'SourceRoiNames': [Target],
-                        'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } }, 
-                    ExpressionB={ 'Operation': "Union", 'SourceRoiNames': [], 
-                        'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } }, 
-                    ResultOperation="None", 
-                        ResultMarginSettings={ 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 })
-                retval_PTVs.UpdateDerivedGeometry(Examination=examination, Algorithm="Auto")
-                retval_PTVs.ExcludeFromExport = True
-
-
-
-    # Generate the UnderDose structure
-    if GenerateUnderDose:
-        try: 
-            retval_UnderDose = case.PatientModel.CreateRoi(Name="UnderDose", Color="0, 255, 127", Type="Undefined", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
-        except:
-            StructureName = 'UnderDose'
-            # This next line due to the fact that the ROI object index is not case specific but the name is
-            case.PatientModel.RegionsOfInterest[StructureName].Name = StructureName
-            retval_UnderDose = case.PatientModel.RegionsOfInterest[StructureName]
-            logging.warning("Structure "+StructureName+" exists.  Its geometry will be overwritten")
-
-        with connect.CompositeAction('ROI Algebra (UnderDose)'):
-          retval_UnderDose.SetAlgebraExpression(
-              ExpressionA={ 'Operation': "Union", 'SourceRoiNames': UnderStruct, 
-                  'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } }, 
-              ExpressionB={ 'Operation': "Intersection", 'SourceRoiNames': [], 
-                  'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } }, 
-              ResultOperation="None", 
-                  ResultMarginSettings={ 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 })
-          retval_UnderDose.ExcludeFromExport = True
-          retval_UnderDose.UpdateDerivedGeometry(Examination=examination, Algorithm="Auto")
 
   # CompositeAction ends 
 
     if GenerateUniformDose:
-        try:
-            StructureName = "UniformDose"
-            retval_UniformDose = case.PatientModel.RegionsOfInterest[StructureName]
-            logging.warning("Structure "+StructureName+" exists.  Its geometry will be overwritten")
-        except:
-            retval_UniformDose = case.PatientModel.CreateRoi(Name="UniformDose", Color="Red", Type="Undefined", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
-
-        with connect.CompositeAction('ROI Algebra (UniformDose)'):
-          retval_UniformDose.SetAlgebraExpression(
-              ExpressionA={ 'Operation': "Union", 'SourceRoiNames': UniformStruct, 
-                  'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } }, 
-              ExpressionB={ 'Operation': "Union", 'SourceRoiNames': [], 
-                  'MarginSettings': { 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 } },
-              ResultOperation="None", 
-                  ResultMarginSettings={ 'Type': "Expand", 'Superior': 0, 'Inferior': 0, 'Anterior': 0, 'Posterior': 0, 'Right': 0, 'Left': 0 })
-          retval_UniformDose.ExcludeFromExport = True
-          retval_UniformDose.UpdateDerivedGeometry(Examination=examination, Algorithm="Auto")
+        UniformDose_defs = {
+        "StructureName" : "UniformDose",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " Blue",
+        "OperationA" : "Union",
+        "SourcesA" : UniformStruct,
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationB" : "Union",
+        "SourcesB" : [],
+        "MarginTypeB" : "Expand",
+        "ExpB" : [ 0, 0, 0, 0, 0, 0],
+        "OperationResult" : "None",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "StructType" : "Undefined"}
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **UniformDose_defs)
 
     # Redraw the clean external volume if neccessary
     try:
@@ -181,9 +172,6 @@ def main():
         InExternalClean = case.PatientModel.RegionsOfInterest['ExternalClean']
         retval_ExternalClean.VolumeThreshold(InputRoi=InExternalClean, Examination=examination,MinVolume = 1,MaxVolume = 200000)
         retval_ExternalClean.SetAsExternal()
-
-
-        
 
     if GenerateSkin:
         Skin_defs = {
@@ -210,7 +198,7 @@ def main():
         try:
             retval_AIR = case.PatientModel.RegionsOfInterest["Air"]
         except:
-            retval_AIR = case.PatientModel.CreateRoi(Name="Air", Color="Green", Type="Control", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
+            retval_AIR = case.PatientModel.CreateRoi(Name="Air", Color="Green", Type="Undefined", TissueName=None, RbeCellTypeName=None, RoiMaterial=None)
         retval_AIR.GrayLevelThreshold(Examination=examination, LowThreshold=-1024, HighThreshold=InnerAirHU, PetUnit="", CbctUnit=None, BoundingBox=None)
 
         InnerAir_defs = {
@@ -260,8 +248,29 @@ def main():
             "StructType" : "Ptv"}
             MakeBooleanStructure(patient = patient, case = case, examination = examination, **PTVEval_defs)
             EvalSubtract.append(Target)
+        EvalSources.remove("ExternalClean")
 # Exclusion Zone
     if GenerateUnderDose:
+        # Generate the UnderDose structure
+        UnderDose_defs = {
+        "StructureName" : "UnderDose",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " Blue",
+        "OperationA" : "Union",
+        "SourcesA" : UnderStruct,
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationB" : "Union",
+        "SourcesB" : [],
+        "MarginTypeB" : "Expand",
+        "ExpB" : [ 0, 0, 0, 0, 0, 0],
+        "OperationResult" : "None",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "StructType" : "Undefined"}
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **UnderDose_defs)
+        # Generate the PTV_EZ
         PTVEZ_defs = {
         "StructureName" : "PTV_EZ",
         "ExcludeFromExport" : True,
@@ -278,8 +287,73 @@ def main():
         "OperationResult" : "Intersection",
         "MarginTypeR" : "Expand",
         "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
-        "StructType" : "Undefined"}
+        "StructType" : "Ptv"}
         MakeBooleanStructure(patient = patient, case = case, examination = examination, **PTVEZ_defs)
+        # Underdose Expansion now needed
+        UnderDoseExp_defs = {
+        "StructureName" : "UnderDose_Exp",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " 255, 0, 255",
+        "OperationA" : "Union",
+        "SourcesA" : UnderStruct,
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ UnderDoseStandoff, UnderDoseStandoff, UnderDoseStandoff, UnderDoseStandoff, UnderDoseStandoff, UnderDoseStandoff ],
+        "OperationB" : "Union",
+        "SourcesB" : [],
+        "MarginTypeB" : "Expand",
+        "ExpB" : [ 0, 0, 0, 0, 0, 0],
+        "OperationResult" : "None",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "StructType" : "Undefined"}
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **UnderDoseExp_defs)
+# Set the Sources Structure for Evals
+    if GenerateOTVs:
+        print EvalSources
+        if case.PatientModel.StructureSets[examination.Name].RoiGeometries['UnderDose_Exp'].HasContours():
+            OTVSubtract = ["UnderDose_Exp"]
+        else:
+            OTVSubtract = []
+        for index, Target in enumerate(PTVEvalList):
+            expPTV_defs = {
+            "StructureName" : "exp"+PTVList[index],
+            "ExcludeFromExport" : True,
+            "VisualizeStructure" : False,
+            "StructColor" : "192, 192, 192",
+            "OperationA" : "Intersection",
+            "SourcesA" : [Target],
+            "MarginTypeA" : "Expand",
+            "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+            "OperationB" : "Union",
+            "SourcesB" : OTVSubtract,
+            "MarginTypeB" : "Expand",
+            "ExpB" : [ OTVStandoff, OTVStandoff, OTVStandoff, OTVStandoff, OTVStandoff, OTVStandoff],
+            "OperationResult" : "Subtraction",
+            "MarginTypeR" : "Expand",
+            "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+            "StructType" : "Undefined"}
+            MakeBooleanStructure(patient = patient, case = case, examination = examination, **expPTV_defs)
+            OTV_defs = {
+            "StructureName" : OTVList[index],
+            "ExcludeFromExport" : True,
+            "VisualizeStructure" : False,
+            "StructColor" : TargetColors[index],
+            "OperationA" : "Intersection",
+            "SourcesA" : [Target],
+            "MarginTypeA" : "Expand",
+            "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+            "OperationB" : "Union",
+            "SourcesB" : OTVSubtract,
+            "MarginTypeB" : "Expand",
+            "ExpB" : [ 0, 0, 0, 0, 0, 0],
+            "OperationResult" : "Subtraction",
+            "MarginTypeR" : "Expand",
+            "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+            "StructType" : "Ptv"}
+            MakeBooleanStructure(patient = patient, case = case, examination = examination, **OTV_defs)
+            OTVSubtract.append(expPTV_defs.get("StructureName"))
+        
 
     # RingHD
     if GenerateRingHD:
@@ -321,6 +395,70 @@ def main():
         "OperationResult" : "Subtraction",
         "StructType" : "Undefined"}
         MakeBooleanStructure(patient = patient, case = case, examination = examination, **RingHD_defs)
+
+    # RingLD
+    if GenerateRingLD:
+        # First make an ExternalClean-limited expansion volume
+        # Would a sequential expansion be faster?
+        z_derived_maxld_defs = { 
+        "StructureName" : "z_derived_maxld",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " 255, 0, 255",
+        "SourcesA" : PTVList,
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ ThickLDRing, ThickLDRing, ThickLDRing, ThickLDRing, ThickLDRing, ThickLDRing ],
+        "OperationA" : "Union",
+        "SourcesB" : ["ExternalClean"],
+        "MarginTypeB" : "Expand",
+        "ExpB" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationB" : "Union",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationResult" : "Intersection",
+        "StructType" : "Undefined" }
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **z_derived_maxld_defs)
+
+        RingLD_defs = {
+        "StructureName" : "RingLD",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " 255, 0, 255",
+        "SourcesA" : ["z_derived_maxld"],
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationA" : "Union",
+        "SourcesB" : PTVList,
+        "MarginTypeB" : "Expand",
+        "ExpB" : [ RingStandoff, RingStandoff, RingStandoff, RingStandoff, RingStandoff, RingStandoff],
+        "OperationB" : "Union",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationResult" : "Subtraction",
+        "StructType" : "Undefined"}
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **RingLD_defs)
+
+    if GenerateNormal_2cm:
+        Normal_2cm_defs = {
+        "StructureName" : "Normal_2cm",
+        "ExcludeFromExport" : True,
+        "VisualizeStructure" : False,
+        "StructColor" : " 255, 0, 255",
+        "SourcesA" : ["ExternalClean"],
+        "MarginTypeA" : "Expand",
+        "ExpA" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationA" : "Union",
+        "SourcesB" : PTVList,
+        "MarginTypeB" : "Expand",
+        "ExpB" : [ 2, 2, 2, 2, 2, 2],
+        "OperationB" : "Union",
+        "MarginTypeR" : "Expand",
+        "ExpR" : [ 0, 0, 0, 0, 0, 0 ],
+        "OperationResult" : "Subtraction",
+        "StructType" : "Undefined"}
+        MakeBooleanStructure(patient = patient, case = case, examination = examination, **Normal_2cm_defs)
+
+    
 
 if __name__ == '__main__':
     main()
