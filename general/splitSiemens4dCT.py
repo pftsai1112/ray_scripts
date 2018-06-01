@@ -46,7 +46,7 @@ mydir = tempfile.mkdtemp()
 sys.path.append(mydir)
 #this location must be edited if used in other versions of RayStation
 zipfile.ZipFile(r"\\mvs-rayssql01\DicomImageStorage\Python 4D Package\pydicom.egg").extractall(mydir)
-import dicom
+import pydicom
 clr.AddReference("PresentationFramework")
 from System.Windows import *
 
