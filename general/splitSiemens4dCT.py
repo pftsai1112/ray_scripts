@@ -1,7 +1,9 @@
 """ Split Siemens 4D CT
     
     Divide the Siemens 4D into up to 13 phases
-    
+    Relies at this time on an obsolete version of pydicom (0.9) 
+    Also relies on a zip file "python.egg" to be installed somewhere
+ 
     Scope: Specific directories required.  Testing compatibility with dicom library
 
     Example Usage:
