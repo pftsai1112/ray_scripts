@@ -47,7 +47,8 @@ import random
 mydir = tempfile.mkdtemp()
 sys.path.append(mydir)
 #this location must be edited if used in other versions of RayStation
-zipfile.ZipFile(r"\\mvs-rayssql01\DicomImageStorage\Python 4D Package\pydicom.egg").extractall(mydir)
+#zipfile.ZipFile(r"\\mvs-rayssql01\DicomImageStorage\Python 4D Package\pydicom.egg").extractall(mydir)
+zipfile.ZipFile(r"..\library\pydicom.egg").extractall(mydir)
 import pydicom
 clr.AddReference("PresentationFramework")
 from System.Windows import *
